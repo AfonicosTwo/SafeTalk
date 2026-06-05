@@ -18,7 +18,7 @@ class MainActivity : ComponentActivity() {
         authManager = AuthManager()
 
         // ⚠️ Recuerda usar temporalmente tu API Key real en tu dispositivo local para probarla
-        safeTalkClient = SafeTalkClient("LLAVE_SEGURA_NO_SUBIR")
+        safeTalkClient = SafeTalkClient("")
 
         setContent {
             SafeTalkTheme {
