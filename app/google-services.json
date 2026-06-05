@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "936674507861",
+    "project_id": "safetalk-892eb",
+    "storage_bucket": "safetalk-892eb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:936674507861:android:69cd362b3b076c9b20a8dc",
+        "android_client_info": {
+          "package_name": "com.afonicos.safetalk"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDiTfkUWY7eiDpGesSANnjYsDdVPqINJrM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
