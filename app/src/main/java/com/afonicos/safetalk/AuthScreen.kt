@@ -2,20 +2,22 @@ package com.afonicos.safetalk
 
 import android.widget.Toast
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Face
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 
@@ -44,7 +46,11 @@ fun AuthScreen(authManager: AuthManager, onAuthSuccess: () -> Unit) {
         /* =========================================================
            1. LOGO DE LA MASCOTA
            ========================================================= */
-        Image(painter = painterResource(id = R.drawable.logo_app), contentDescription = "Logo SafeTalk", modifier = Modifier.size(90.dp))
+        Image(
+            painter = painterResource(id = R.drawable.logo_app),
+            contentDescription = "Logo SafeTalk",
+            modifier = Modifier.size(90.dp).clip(CircleShape) // Agregué el clip circular por si tu logo es cuadrado
+        )
         Spacer(modifier = Modifier.height(40.dp))
 
         /* =========================================================
@@ -57,7 +63,7 @@ fun AuthScreen(authManager: AuthManager, onAuthSuccess: () -> Unit) {
         )
 
         /* =========================================================
-           3. CAMPOS DE TEXTO (Aparecen según el modo)
+           3. CAMPOS DE TEXTO
            ========================================================= */
 
         // ¡El campo de Nombre solo aparece si el usuario quiere registrarse!
@@ -67,23 +73,19 @@ fun AuthScreen(authManager: AuthManager, onAuthSuccess: () -> Unit) {
                 onValueChange = { nombre = it },
                 label = { Text("Nombre Completo") },
                 placeholder = { Text("Ej. Jorge") },
+                // Le damos la acción de "Siguiente" en el teclado también al nombre
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
             )
         }
 
-        OutlinedTextField(
-            value = correo,
-            onValueChange = { correo = it },
-            label = { Text("Correo Electrónico") },
-            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
-        )
-
-        OutlinedTextField(
-            value = contrasenia,
-            onValueChange = { contrasenia = it },
-            label = { Text("Contraseña") },
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp)
+        // AQUÍ ES DONDE ESTABA EL ERROR.
+        // En lugar de definir la función, ahora la estamos LLAMANDO y pasándole los datos.
+        OutlinesTextFields(
+            correo = correo,
+            onCorreoChange = { correo = it },
+            contrasenia = contrasenia,
+            onContraseniaChange = { contrasenia = it }
         )
 
         /* =========================================================
@@ -92,7 +94,6 @@ fun AuthScreen(authManager: AuthManager, onAuthSuccess: () -> Unit) {
         Button(
             onClick = {
                 if (isRegistro) {
-                    // Acción de Registrar
                     if (correo.isNotEmpty() && contrasenia.isNotEmpty() && nombre.isNotEmpty()) {
                         authManager.registrarEstudiante(correo, contrasenia, nombre) { exito, mensaje ->
                             Toast.makeText(context, mensaje, Toast.LENGTH_SHORT).show()
@@ -102,7 +103,6 @@ fun AuthScreen(authManager: AuthManager, onAuthSuccess: () -> Unit) {
                         Toast.makeText(context, "Por favor, llena todos los campos.", Toast.LENGTH_SHORT).show()
                     }
                 } else {
-                    // Acción de Iniciar Sesión
                     if (correo.isNotEmpty() && contrasenia.isNotEmpty()) {
                         authManager.iniciarSesionEstudiante(correo, contrasenia) { exito, mensaje ->
                             Toast.makeText(context, mensaje, Toast.LENGTH_SHORT).show()
@@ -125,8 +125,7 @@ fun AuthScreen(authManager: AuthManager, onAuthSuccess: () -> Unit) {
            ========================================================= */
         TextButton(
             onClick = {
-                isRegistro = !isRegistro // Alterna la magia
-                // Limpiamos los campos al cambiar de modo para que quede impecable
+                isRegistro = !isRegistro
                 correo = ""
                 contrasenia = ""
                 nombre = ""
@@ -139,3 +138,45 @@ fun AuthScreen(authManager: AuthManager, onAuthSuccess: () -> Unit) {
     }
 }
 
+// =========================================================
+// COMPONENTES SECUNDARIOS (FUERA DE LA PANTALLA PRINCIPAL)
+// =========================================================
+
+@Composable
+fun OutlinesTextFields(
+    correo: String,
+    onCorreoChange: (String) -> Unit,
+    contrasenia: String,
+    onContraseniaChange: (String) -> Unit
+) {
+    // Controlador para ocultar el teclado mágicamente
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    OutlinedTextField(
+        value = correo,
+        onValueChange = onCorreoChange,
+        label = { Text("Correo Electrónico") },
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Email,
+            imeAction = ImeAction.Next
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 16.dp)
+    )
+
+    OutlinedTextField(
+        value = contrasenia,
+        onValueChange = onContraseniaChange,
+        label = { Text("Contraseña") },
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Password,
+            imeAction = ImeAction.Done
+        ),
+        keyboardActions = KeyboardActions(
+            onDone = { keyboardController?.hide() }
+        ),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp) // Le agregué margen inferior para separarlo del botón Entrar
+    )
+}
