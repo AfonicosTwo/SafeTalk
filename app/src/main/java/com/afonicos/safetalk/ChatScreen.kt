@@ -1,5 +1,6 @@
 package com.afonicos.safetalk
 
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,10 +28,13 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -46,9 +50,16 @@ val TextoOscuro = Color(0xFF2C3E50)
 data class Mensaje(val texto: String, val esUsuario: Boolean)
 data class SesionChat(val id: String, var titulo: String, val mensajes: MutableList<Mensaje>)
 
+// 1. AÑADIMOS LAS NUEVAS VARIABLES A LA FIRMA
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChatScreen(safeTalkClient: SafeTalkClient, onCerrarSesion: () -> Unit) {
+fun ChatScreen(
+    safeTalkClient: SafeTalkClient,
+    authManager: AuthManager,
+    isDarkMode: Boolean,
+    onToggleDarkMode: () -> Unit,
+    onCerrarSesion: () -> Unit
+) {
     val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberLazyListState()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -61,6 +72,9 @@ fun ChatScreen(safeTalkClient: SafeTalkClient, onCerrarSesion: () -> Unit) {
 
     var chatAEliminar by remember { mutableStateOf<SesionChat?>(null) }
 
+    // 2. NUEVA VARIABLE PARA CONTROLAR CUÁNDO SE VE EL PERFIL
+    var mostrarDialogoPerfil by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
         chatManager.escucharConversaciones { listaDeNube ->
             sesiones.clear()
@@ -71,34 +85,23 @@ fun ChatScreen(safeTalkClient: SafeTalkClient, onCerrarSesion: () -> Unit) {
                     chatActual = sesiones.first()
                 }
             } else {
-        // Esto solo se ejecutará la PRIMERA VEZ que el usuario crea su cuenta
-        val idNuevo = UUID.randomUUID().toString()
+                val idNuevo = UUID.randomUUID().toString()
+                val nuevaSesion = SesionChat(idNuevo, "Nueva Conversación", mutableStateListOf())
+                chatActual = nuevaSesion
 
-        // 1. Asignamos el chat a la pantalla INMEDIATAMENTE para que no se quede en blanco
-        val nuevaSesion = SesionChat(idNuevo, "Nueva Conversación", mutableStateListOf())
-        chatActual = nuevaSesion
-
-        chatManager.guardarNuevaConversacion(idNuevo, "Nueva Conversación") { exito ->
-            if (exito) {
-                // 2. Le damos el empujón inicial a Gemini en segundo plano
-                coroutineScope.launch {
-                    estaPensando = true
-
-                    // Mensaje invisible para la IA
-                    val contextoInicial = "El usuario acaba de crear su cuenta y entrar al chat. Por favor, preséntate de manera muy amigable, descríbete físicamente como el dinosaurio y salúdalo por su nombre para iniciar la sesión."
-
-                    // Disparamos la solicitud
-                    val respuestaDelDino = safeTalkClient.enviarMensaje(contextoInicial)
-
-                    // Guardamos en la nube y mostramos en pantalla
-                    chatManager.guardarMensaje(idNuevo, respuestaDelDino, false)
-                    chatActual?.mensajes?.add(Mensaje(texto = respuestaDelDino, esUsuario = false))
-
-                    estaPensando = false
+                chatManager.guardarNuevaConversacion(idNuevo, "Nueva Conversación") { exito ->
+                    if (exito) {
+                        coroutineScope.launch {
+                            estaPensando = true
+                            val contextoInicial = "El usuario acaba de crear su cuenta y entrar al chat. Por favor, preséntate de manera muy amigable, descríbete físicamente como el dinosaurio y salúdalo por su nombre para iniciar la sesión."
+                            val respuestaDelDino = safeTalkClient.enviarMensaje(contextoInicial)
+                            chatManager.guardarMensaje(idNuevo, respuestaDelDino, false)
+                            chatActual?.mensajes?.add(Mensaje(texto = respuestaDelDino, esUsuario = false))
+                            estaPensando = false
+                        }
+                    }
                 }
             }
-        }
-    }
         }
     }
 
@@ -130,27 +133,18 @@ fun ChatScreen(safeTalkClient: SafeTalkClient, onCerrarSesion: () -> Unit) {
                 TextButton(
                     onClick = {
                         chatAEliminar?.let { chat ->
-                            /* =========================================================
-                               ¡AQUÍ ENTRA TU IDEA BRILLANTE DE EVASIÓN DE ESTADO!
-                               ========================================================= */
                             if (sesiones.size == 1) {
-                                // Si es la última conversación, creamos el reemplazo PRIMERO
                                 val idNuevo = UUID.randomUUID().toString()
                                 val saludoInicial = "¡Hola! Qué gusto tenerte aquí en SafeTalk. Soy tu compañero de camino, estoy listo para escucharte y apoyarte sin juzgarte. ¿Cómo te va el día hoy?"
-
                                 chatManager.guardarNuevaConversacion(idNuevo, "Nueva Conversación") { exito ->
                                     if (exito) {
                                         chatManager.guardarMensaje(idNuevo, saludoInicial, false)
-                                        // Una vez que el reemplazo está a salvo en la nube, borramos la vieja
                                         chatManager.eliminarConversacion(chat.id)
                                     }
                                 }
                             } else {
-                                // Si hay más conversaciones, la borramos normalmente
                                 chatManager.eliminarConversacion(chat.id)
                             }
-
-                            // Limpiamos la pantalla actual para que el sistema salte a la siguiente disponible
                             if (chatActual?.id == chat.id) chatActual = null
                         }
                         chatAEliminar = null
@@ -190,7 +184,6 @@ fun ChatScreen(safeTalkClient: SafeTalkClient, onCerrarSesion: () -> Unit) {
                     onClick = {
                         val idNuevo = UUID.randomUUID().toString()
                         val saludoInicial = "¡Hola de nuevo! Iniciemos una nueva charla. ¿De qué te gustaría platicar?"
-
                         val nuevaSesion = SesionChat(idNuevo, "Nueva Conversación", mutableStateListOf(Mensaje(saludoInicial, false)))
                         chatActual = nuevaSesion
 
@@ -247,10 +240,7 @@ fun ChatScreen(safeTalkClient: SafeTalkClient, onCerrarSesion: () -> Unit) {
     ) {
         Scaffold(
             topBar = {
-                Surface(
-                    shadowElevation = 4.dp,
-                    color = BlancoPuro
-                ) {
+                Surface(shadowElevation = 4.dp, color = BlancoPuro) {
                     TopAppBar(
                         navigationIcon = {
                             IconButton(onClick = { coroutineScope.launch { drawerState.open() } }) {
@@ -265,10 +255,7 @@ fun ChatScreen(safeTalkClient: SafeTalkClient, onCerrarSesion: () -> Unit) {
                                 Image(
                                     painter = painterResource(id = R.drawable.dino_cerrado),
                                     contentDescription = "Mascota Escuchando",
-                                    modifier = Modifier
-                                        .size(44.dp)
-                                        .clip(CircleShape)
-                                        .background(FondoCozy)
+                                    modifier = Modifier.size(44.dp).clip(CircleShape).background(FondoCozy)
                                 )
                                 Column {
                                     Text("SafeTalk", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = MoradoMascota)
@@ -281,8 +268,14 @@ fun ChatScreen(safeTalkClient: SafeTalkClient, onCerrarSesion: () -> Unit) {
                             }
                         },
                         actions = {
-                            TextButton(onClick = onCerrarSesion) {
-                                Text("Salir", color = Color.Gray)
+                            // 3. AQUÍ CAMBIAMOS EL TEXTO DE 'SALIR' POR EL ICONO CIRCULAR
+                            IconButton(onClick = { mostrarDialogoPerfil = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.AccountCircle,
+                                    contentDescription = "Perfil",
+                                    tint = MoradoMascota,
+                                    modifier = Modifier.size(32.dp)
+                                )
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = BlancoPuro)
@@ -322,9 +315,7 @@ fun ChatScreen(safeTalkClient: SafeTalkClient, onCerrarSesion: () -> Unit) {
                     color = BlancoPuro
                 ) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -367,12 +358,7 @@ fun ChatScreen(safeTalkClient: SafeTalkClient, onCerrarSesion: () -> Unit) {
                                 .weight(1f)
                                 .onKeyEvent { event ->
                                     if (event.key == Key.Enter && event.type == KeyEventType.KeyDown) {
-                                        if (event.isShiftPressed) {
-                                            false
-                                        } else {
-                                            enviarMensaje()
-                                            true
-                                        }
+                                        if (event.isShiftPressed) false else { enviarMensaje(); true }
                                     } else {
                                         false
                                     }
@@ -401,6 +387,25 @@ fun ChatScreen(safeTalkClient: SafeTalkClient, onCerrarSesion: () -> Unit) {
                     }
                 }
             }
+
+            // 4. LLAMAMOS AL MODAL DE PERFIL AQUÍ
+            if (mostrarDialogoPerfil) {
+                DialogoPerfil(
+                    authManager = authManager,
+                    nombreActual = safeTalkClient.nombreUsuario,
+                    isDarkMode = isDarkMode,
+                    onToggleDarkMode = onToggleDarkMode,
+                    onNombreCambiado = { nuevoNombre ->
+                        safeTalkClient.nombreUsuario = nuevoNombre
+                    },
+                    onCerrar = { mostrarDialogoPerfil = false },
+                    onCerrarSesion = {
+                        mostrarDialogoPerfil = false
+                        FirebaseAuth.getInstance().signOut()
+                        onCerrarSesion()
+                    }
+                )
+            }
         }
     }
 }
@@ -416,10 +421,7 @@ fun FilaMensaje(mensaje: Mensaje, esBienvenida: Boolean = false) {
             Image(
                 painter = painterResource(id = R.drawable.dino_abierto),
                 contentDescription = "Dino Hablando",
-                modifier = Modifier
-                    .padding(end = 8.dp)
-                    .size(36.dp)
-                    .clip(CircleShape)
+                modifier = Modifier.padding(end = 8.dp).size(36.dp).clip(CircleShape)
             )
         }
 
@@ -449,9 +451,7 @@ fun FilaMensaje(mensaje: Mensaje, esBienvenida: Boolean = false) {
                     Image(
                         painter = painterResource(id = R.drawable.dino_bienvenida),
                         contentDescription = "Dino dando la bienvenida",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(180.dp),
+                        modifier = Modifier.fillMaxWidth().height(180.dp),
                         contentScale = ContentScale.Fit
                     )
                 }
@@ -493,6 +493,117 @@ fun BurbujaCargando() {
                 strokeWidth = 3.dp,
                 color = AmbarComplemento
             )
+        }
+    }
+}
+
+// 5. AQUÍ VIVE EL MODAL DEL PERFIL (REDISEÑADO)
+@Composable
+fun DialogoPerfil(
+    authManager: AuthManager,
+    nombreActual: String,
+    isDarkMode: Boolean,
+    onToggleDarkMode: () -> Unit,
+    onNombreCambiado: (String) -> Unit,
+    onCerrar: () -> Unit,
+    onCerrarSesion: () -> Unit
+) {
+    val context = LocalContext.current
+    val usuario = FirebaseAuth.getInstance().currentUser
+    val correoUsuario = usuario?.email ?: ""
+
+    var editandoNombre by remember { mutableStateOf(false) }
+    var nuevoNombre by remember { mutableStateOf(nombreActual) }
+    var procesando by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onCerrar) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = BlancoPuro)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Cabecera
+                Icon(
+                    imageVector = Icons.Default.AccountCircle,
+                    contentDescription = "Avatar",
+                    tint = MoradoMascota,
+                    modifier = Modifier.size(64.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(text = correoUsuario, color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Opción 1: Modificar Nombre
+                if (editandoNombre) {
+                    OutlinedTextField(
+                        value = nuevoNombre,
+                        onValueChange = { nuevoNombre = it },
+                        label = { Text("Nuevo Nombre") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            if (nuevoNombre.isNotBlank() && nuevoNombre != nombreActual) {
+                                procesando = true
+                                authManager.actualizarNombre(nuevoNombre) { exito, msj ->
+                                    procesando = false
+                                    Toast.makeText(context, msj, Toast.LENGTH_SHORT).show()
+                                    if (exito) {
+                                        onNombreCambiado(nuevoNombre)
+                                        editandoNombre = false
+                                    }
+                                }
+                            } else {
+                                editandoNombre = false
+                            }
+                        },
+                        enabled = !procesando,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (procesando) "Guardando..." else "Guardar Nombre")
+                    }
+                } else {
+                    OutlinedButton(onClick = { editandoNombre = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Modificar mi Nombre", color = TextoOscuro)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Opción 2: Cambiar Contraseña
+                OutlinedButton(
+                    onClick = {
+                        procesando = true
+                        authManager.enviarCorreoRestablecimiento(correoUsuario) { _, msj ->
+                            procesando = false
+                            Toast.makeText(context, msj, Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    enabled = !procesando,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Cambiar Contraseña", color = TextoOscuro)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = FondoCozy)
+
+                // Botón Cerrar Sesión
+                Button(
+                    onClick = onCerrarSesion,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MoradoMascota)
+                ) {
+                    Text("Cerrar Sesión", color = BlancoPuro)
+                }
+            }
         }
     }
 }
