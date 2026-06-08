@@ -75,5 +75,32 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+
+        // 3. Simulamos el uso de la IA por consola (para probar que funciona)
+        val mensajeDelUsuario = "Me siento muy estresado por los exámenes de esta semana"
+        procesarFlujoDeChat(mensajeDelUsuario)
+    }
+
+    private fun procesarFlujoDeChat(mensaje: String) {
+        // Ejecutamos el Filtro Local primero
+        if (!safeTalkClient.esMensajeSeguro(mensaje)) {
+            mostrarEnPantalla("Bot: Tu vida es valiosa. Por favor, busca ayuda profesional en el departamento psicológico de la escuela o llama al 01 800 911 2000.")
+            return
+        }
+
+        // Si es seguro, abrimos una corrutina para consultar a Gemini
+        lifecycleScope.launch {
+            mostrarEnPantalla("Bot pensando...")
+
+            // Llamada asíncrona a la IA
+            val respuestaBot = safeTalkClient.enviarMensaje(mensaje)
+
+            mostrarEnPantalla("Bot: $respuestaBot")
+        }
+    }
+
+    // Esta función pinta el texto en la consola del IDE (Logcat/Run)
+    private fun mostrarEnPantalla(texto: String) {
+        println(texto)
     }
 }
