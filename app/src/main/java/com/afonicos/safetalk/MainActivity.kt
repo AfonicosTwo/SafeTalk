@@ -3,6 +3,7 @@ package com.afonicos.safetalk
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.isSystemInDarkTheme // <-- NUEVO IMPORT NECESARIO
 import androidx.compose.runtime.*
 import com.afonicos.safetalk.ui.theme.SafeTalkTheme
 import com.google.firebase.auth.FirebaseAuth
@@ -16,10 +17,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Inicializamos los motores de backend y seguridad
+        // Inicializamos los motores
         authManager = AuthManager()
-
-        // ⚠️ Recuerda usar temporalmente tu API Key real en tu dispositivo local para probarla
         safeTalkClient = SafeTalkClient("")
 
         // Esto se ejecuta al abrir la app si el usuario ya tenía sesión iniciada
@@ -30,32 +29,33 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            SafeTalkTheme {
-                // Estado lógico para saber qué pantalla pintar en el celular
-                // false = Login/Registro, true = Sala de Chat activa
+            // =========================================================
+            // AQUÍ INYECTAMOS LA LÓGICA DEL MODO OSCURO
+            // =========================================================
+            // 1. Leemos si el celular del usuario ya está en modo oscuro por defecto
+            val sistemaOscuro = isSystemInDarkTheme()
+
+            // 2. Creamos la variable maestra que controlará el tema en toda la app
+            var isDarkMode by remember { mutableStateOf(sistemaOscuro) }
+
+            // 3. Le pasamos esta variable a tu Tema Principal
+            SafeTalkTheme(darkTheme = isDarkMode) {
                 var usuarioAutenticado by remember { mutableStateOf(false) }
 
                 if (!usuarioAutenticado) {
-                    // Pantalla de Autenticación
                     AuthScreen(
                         authManager = authManager,
                         onAuthSuccess = {
-                            // --- AQUÍ ESTÁ LA MAGIA CORREGIDA ---
                             val currentUser = FirebaseAuth.getInstance().currentUser
                             if (currentUser != null) {
-                                // Vamos directo a Firestore para leer el nombre
                                 val db = FirebaseFirestore.getInstance()
                                 db.collection("usuarios").document(currentUser.uid).get()
                                     .addOnSuccessListener { documento ->
-                                        // Extraemos el nombre exacto de la base de datos
                                         val nombreReal = documento.getString("nombre") ?: "Estudiante"
                                         safeTalkClient.nombreUsuario = nombreReal
-
-                                        // Ahora sí, entramos al chat
                                         usuarioAutenticado = true
                                     }
                                     .addOnFailureListener {
-                                        // Plan B si falla la conexión
                                         safeTalkClient.nombreUsuario = "Estudiante"
                                         usuarioAutenticado = true
                                     }
@@ -65,11 +65,16 @@ class MainActivity : ComponentActivity() {
                         }
                     )
                 } else {
-                    // Pantalla Principal del Chat
+                    // =========================================================
+                    // AQUÍ CONECTAMOS LOS NUEVOS DATOS CON LA PANTALLA DE CHAT
+                    // =========================================================
                     ChatScreen(
                         safeTalkClient = safeTalkClient,
+                        authManager = authManager,             // Para poder cambiar el nombre y contraseña
+                        isDarkMode = isDarkMode,               // Le decimos a la UI en qué tema está
+                        onToggleDarkMode = { isDarkMode = !isDarkMode }, // El botón que invierte el switch
                         onCerrarSesion = {
-                            usuarioAutenticado = false // Regresamos de forma segura al Login
+                            usuarioAutenticado = false
                         }
                     )
                 }

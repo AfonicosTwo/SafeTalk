@@ -84,6 +84,49 @@ class AuthManager {
         } else {
             onResultado(false, "No hay ninguna sesión activa para eliminar.")
         }
+
+
+    }
+
+    // Función 4: Actualizar Nombre del Usuario
+    fun actualizarNombre(nuevoNombre: String, onResultado: (Boolean, String) -> Unit) {
+        val usuarioActual = auth.currentUser
+        val usuarioId = usuarioActual?.uid
+
+        if (usuarioActual != null && usuarioId != null) {
+            // 1. Actualizamos en el perfil interno de Auth
+            val actualizacionPerfil = com.google.firebase.auth.UserProfileChangeRequest.Builder()
+                .setDisplayName(nuevoNombre)
+                .build()
+
+            usuarioActual.updateProfile(actualizacionPerfil).addOnCompleteListener { tarea ->
+                if (tarea.isSuccessful) {
+                    // 2. Actualizamos en nuestra base de datos Firestore
+                    db.collection("usuarios").document(usuarioId)
+                        .update("nombre", nuevoNombre)
+                        .addOnSuccessListener {
+                            onResultado(true, "Nombre actualizado correctamente.")
+                        }
+                        .addOnFailureListener { e ->
+                            onResultado(false, "Error al actualizar en base de datos: ${e.message}")
+                        }
+                } else {
+                    onResultado(false, "Error al actualizar perfil: ${tarea.exception?.message}")
+                }
+            }
+        }
+    }
+
+    // Función 5: Enviar correo para restablecer contraseña
+    fun enviarCorreoRestablecimiento(correo: String, onResultado: (Boolean, String) -> Unit) {
+        auth.sendPasswordResetEmail(correo)
+            .addOnCompleteListener { tarea ->
+                if (tarea.isSuccessful) {
+                    onResultado(true, "¡Correo enviado! Revisa tu bandeja de entrada o spam.")
+                } else {
+                    onResultado(false, "Error: ${tarea.exception?.message}")
+                }
+            }
     }
 }
 
