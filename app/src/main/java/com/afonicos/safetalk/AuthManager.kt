@@ -3,6 +3,7 @@ package com.afonicos.safetalk
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.Timestamp
+import com.google.firebase.auth.UserProfileChangeRequest
 
 class AuthManager {
     // Inicializamos las herramientas de Firebase
@@ -14,16 +15,22 @@ class AuthManager {
         auth.createUserWithEmailAndPassword(correo, contrasenia)
             .addOnCompleteListener { tarea ->
                 if (tarea.isSuccessful) {
-                    val usuarioId = auth.currentUser?.uid
+                    val usuarioActual = auth.currentUser
 
-                    if (usuarioId != null) {
+                    // 1. Guardamos el nombre en el perfil interno de Auth
+                    val actualizacionPerfil = UserProfileChangeRequest.Builder()
+                        .setDisplayName(nombre)
+                        .build()
+
+                    usuarioActual?.updateProfile(actualizacionPerfil)?.addOnCompleteListener {
+                        // 2. Una vez actualizado Auth, guardamos en Firestore como ya lo hacías
+                        val usuarioId = usuarioActual.uid
                         val datosUsuario = hashMapOf(
                             "nombre" to nombre,
                             "correo" to correo,
                             "fecha_registro" to Timestamp.now()
                         )
 
-                        // Guardamos en Firestore
                         db.collection("usuarios").document(usuarioId)
                             .set(datosUsuario)
                             .addOnSuccessListener {

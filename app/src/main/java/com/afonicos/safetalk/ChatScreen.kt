@@ -37,9 +37,9 @@ import java.util.UUID
 // =========================================================
 // NUESTRA PALETA DE COLORES PERSONALIZADA
 // =========================================================
-val MoradoMascota = Color(0xFF8E24AA)      // Morado vibrante y empático
-val AmbarComplemento = Color(0xFFFFB300)   // Amarillo cálido para llamados a la acción
-val FondoCozy = Color(0xFFF6F4F9)          // Un gris súper clarito con un toque lila
+val MoradoMascota = Color(0xFF8E24AA)
+val AmbarComplemento = Color(0xFFFFB300)
+val FondoCozy = Color(0xFFF6F4F9)
 val BlancoPuro = Color(0xFFFFFFFF)
 val TextoOscuro = Color(0xFF2C3E50)
 
@@ -66,16 +66,39 @@ fun ChatScreen(safeTalkClient: SafeTalkClient, onCerrarSesion: () -> Unit) {
             sesiones.clear()
             sesiones.addAll(listaDeNube)
 
-            if (chatActual == null && sesiones.isNotEmpty()) {
-                chatActual = sesiones.first()
-            } else if (sesiones.isEmpty()) {
-                val idNuevo = UUID.randomUUID().toString()
-                val saludoInicial = "¡Hola! Qué gusto tenerte aquí en SafeTalk. Soy tu compañero de camino, estoy listo para escucharte y apoyarte sin juzgarte. ¿Cómo te va el día hoy?"
+            if (sesiones.isNotEmpty()) {
+                if (chatActual == null || sesiones.none { it.id == chatActual?.id }) {
+                    chatActual = sesiones.first()
+                }
+            } else {
+        // Esto solo se ejecutará la PRIMERA VEZ que el usuario crea su cuenta
+        val idNuevo = UUID.randomUUID().toString()
 
-                chatManager.guardarNuevaConversacion(idNuevo, "Nueva Conversación") { exito ->
-                    if (exito) chatManager.guardarMensaje(idNuevo, saludoInicial, false)
+        // 1. Asignamos el chat a la pantalla INMEDIATAMENTE para que no se quede en blanco
+        val nuevaSesion = SesionChat(idNuevo, "Nueva Conversación", mutableStateListOf())
+        chatActual = nuevaSesion
+
+        chatManager.guardarNuevaConversacion(idNuevo, "Nueva Conversación") { exito ->
+            if (exito) {
+                // 2. Le damos el empujón inicial a Gemini en segundo plano
+                coroutineScope.launch {
+                    estaPensando = true
+
+                    // Mensaje invisible para la IA
+                    val contextoInicial = "El usuario acaba de crear su cuenta y entrar al chat. Por favor, preséntate de manera muy amigable, descríbete físicamente como el dinosaurio y salúdalo por su nombre para iniciar la sesión."
+
+                    // Disparamos la solicitud
+                    val respuestaDelDino = safeTalkClient.enviarMensaje(contextoInicial)
+
+                    // Guardamos en la nube y mostramos en pantalla
+                    chatManager.guardarMensaje(idNuevo, respuestaDelDino, false)
+                    chatActual?.mensajes?.add(Mensaje(texto = respuestaDelDino, esUsuario = false))
+
+                    estaPensando = false
                 }
             }
+        }
+    }
         }
     }
 
@@ -107,13 +130,33 @@ fun ChatScreen(safeTalkClient: SafeTalkClient, onCerrarSesion: () -> Unit) {
                 TextButton(
                     onClick = {
                         chatAEliminar?.let { chat ->
-                            chatManager.eliminarConversacion(chat.id)
+                            /* =========================================================
+                               ¡AQUÍ ENTRA TU IDEA BRILLANTE DE EVASIÓN DE ESTADO!
+                               ========================================================= */
+                            if (sesiones.size == 1) {
+                                // Si es la última conversación, creamos el reemplazo PRIMERO
+                                val idNuevo = UUID.randomUUID().toString()
+                                val saludoInicial = "¡Hola! Qué gusto tenerte aquí en SafeTalk. Soy tu compañero de camino, estoy listo para escucharte y apoyarte sin juzgarte. ¿Cómo te va el día hoy?"
+
+                                chatManager.guardarNuevaConversacion(idNuevo, "Nueva Conversación") { exito ->
+                                    if (exito) {
+                                        chatManager.guardarMensaje(idNuevo, saludoInicial, false)
+                                        // Una vez que el reemplazo está a salvo en la nube, borramos la vieja
+                                        chatManager.eliminarConversacion(chat.id)
+                                    }
+                                }
+                            } else {
+                                // Si hay más conversaciones, la borramos normalmente
+                                chatManager.eliminarConversacion(chat.id)
+                            }
+
+                            // Limpiamos la pantalla actual para que el sistema salte a la siguiente disponible
                             if (chatActual?.id == chat.id) chatActual = null
                         }
                         chatAEliminar = null
                     }
                 ) {
-                    Text("Eliminar", color = Color(0xFFE53935)) // Rojo alerta
+                    Text("Eliminar", color = Color(0xFFE53935))
                 }
             },
             dismissButton = {
@@ -204,7 +247,6 @@ fun ChatScreen(safeTalkClient: SafeTalkClient, onCerrarSesion: () -> Unit) {
     ) {
         Scaffold(
             topBar = {
-                // Barra superior más limpia, blanca con sombra sutil
                 Surface(
                     shadowElevation = 4.dp,
                     color = BlancoPuro
@@ -226,7 +268,7 @@ fun ChatScreen(safeTalkClient: SafeTalkClient, onCerrarSesion: () -> Unit) {
                                     modifier = Modifier
                                         .size(44.dp)
                                         .clip(CircleShape)
-                                        .background(FondoCozy) // Fondo circular para que resalte
+                                        .background(FondoCozy)
                                 )
                                 Column {
                                     Text("SafeTalk", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = MoradoMascota)
@@ -252,7 +294,6 @@ fun ChatScreen(safeTalkClient: SafeTalkClient, onCerrarSesion: () -> Unit) {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    // Fondo cálido y acogedor en lugar del blanco plano
                     .background(FondoCozy)
             ) {
 
@@ -345,7 +386,6 @@ fun ChatScreen(safeTalkClient: SafeTalkClient, onCerrarSesion: () -> Unit) {
                             )
                         )
 
-                        // El botón de enviar ahora utiliza nuestro color complementario (Ámbar)
                         IconButton(
                             onClick = { enviarMensaje() },
                             enabled = textoIngresado.isNotBlank() && !estaPensando,
@@ -390,10 +430,9 @@ fun FilaMensaje(mensaje: Mensaje, esBienvenida: Boolean = false) {
                 bottomStart = if (mensaje.esUsuario) 16.dp else 0.dp,
                 bottomEnd = if (mensaje.esUsuario) 0.dp else 16.dp
             ),
-            // Las burbujas del usuario son Moradas, las de la IA son Blancas y limpias
             color = if (mensaje.esUsuario) MoradoMascota else BlancoPuro,
             contentColor = if (mensaje.esUsuario) BlancoPuro else TextoOscuro,
-            shadowElevation = if (mensaje.esUsuario) 0.dp else 2.dp, // Sombra solo para la IA
+            shadowElevation = if (mensaje.esUsuario) 0.dp else 2.dp,
             modifier = Modifier.widthIn(max = if (esBienvenida) 320.dp else 280.dp)
         ) {
             Column(
@@ -423,7 +462,7 @@ fun FilaMensaje(mensaje: Mensaje, esBienvenida: Boolean = false) {
             Icon(
                 imageVector = Icons.Default.AccountCircle,
                 contentDescription = "Usuario",
-                tint = AmbarComplemento, // El ícono del usuario ahora hace juego con el botón
+                tint = AmbarComplemento,
                 modifier = Modifier.padding(start = 8.dp).size(32.dp)
             )
         }
@@ -452,7 +491,7 @@ fun BurbujaCargando() {
             CircularProgressIndicator(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp).size(20.dp),
                 strokeWidth = 3.dp,
-                color = AmbarComplemento // La rueda de carga ahora es ámbar
+                color = AmbarComplemento
             )
         }
     }
